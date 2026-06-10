@@ -1,0 +1,35 @@
+# Databricks App deployment template (repo root).
+# Copy to app.yaml at deploy time and replace resource names with the ones you
+# create in your Databricks environment. NEVER put real secret values here.
+#
+# Env naming is standardized to DATABRICKS_SERVER_HOSTNAME (matches the playbook
+# and databricks_client.py). See docs/ENV_VARS.md.
+command: ["streamlit", "run", "app.py"]
+
+env:
+  - name: ANTHROPIC_API_KEY
+    valueFrom: anthropic-api-key
+  - name: DATABRICKS_SERVER_HOSTNAME
+    valueFrom: databricks-server-hostname
+  - name: DATABRICKS_HTTP_PATH
+    valueFrom: databricks-http-path
+  - name: DATABRICKS_TOKEN
+    valueFrom: databricks-token
+  - name: LAKEBASE_RESOURCE
+    value: lakebase-db
+  - name: BENEFITS_DATA_MODE
+    value: databricks_first
+  - name: SHOW_LOCAL_STATE_DEBUG
+    value: "false"
+
+resources:
+  - name: lakebase-db
+    type: lakebase
+  - name: anthropic-api-key
+    type: secret
+  - name: databricks-server-hostname
+    type: secret
+  - name: databricks-http-path
+    type: secret
+  - name: databricks-token
+    type: secret

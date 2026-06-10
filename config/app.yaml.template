@@ -1,0 +1,30 @@
+# app.yaml template - replace resource names only after creating resources in your new Databricks env.
+command: ["streamlit", "run", "app.py"]
+
+env:
+  - name: ANTHROPIC_API_KEY
+    valueFrom: anthropic-api-key
+  - name: DATABRICKS_HOST
+    valueFrom: databricks-host
+  - name: DATABRICKS_HTTP_PATH
+    valueFrom: databricks-http-path
+  - name: DATABRICKS_TOKEN
+    valueFrom: databricks-token
+  - name: LAKEBASE_RESOURCE
+    value: lakebase-db
+  - name: BENEFITS_DATA_MODE
+    value: databricks_first
+  - name: SHOW_LOCAL_STATE_DEBUG
+    value: "false"
+
+resources:
+  - name: lakebase-db
+    type: lakebase
+  - name: anthropic-api-key
+    type: secret
+  - name: databricks-host
+    type: secret
+  - name: databricks-http-path
+    type: secret
+  - name: databricks-token
+    type: secret
