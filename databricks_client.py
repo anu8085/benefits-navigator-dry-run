@@ -59,9 +59,10 @@ def adapt_databricks_programs(rows: list[dict]) -> list[dict]:
                 "url": apply_url,
                 "income_limit_pct_fpl": r.get("income_limit_pct_fpl"),
                 "accepts_undocumented": bool(r.get("accepts_undocumented")),
-                "tags": [t for t in [r.get("category"), r.get("rule_key")] if t],
-                # carried through (unused by rules, available if needed):
-                "rule_key": r.get("rule_key"),
+                # Derive rule tags from rule_key/program_id/program_name so the
+                # rules engine can match even when UC lacks tags/rule_key columns.
+                "tags": [t for t in (r.get("rule_key"), r.get("program_id"), r.get("category")) if t],
+                "rule_key": r.get("rule_key") or r.get("program_id"),
                 "state": r.get("state"),
             }
         )

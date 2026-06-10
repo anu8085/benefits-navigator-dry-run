@@ -80,10 +80,58 @@ def _child_facts(children_ages) -> dict:
     }
 
 
+# Canonical rule keys and the keywords that identify each program. This lets
+# matching survive different program_id/program_name across sources (JSON vs UC)
+# and tables that lack `tags`/`rule_key`. Order matters: more specific first
+# (e.g. CHIP before FamilyCare, since CHIP's name also contains "FamilyCare").
+_RULE_KEYWORDS = [
+    ("snap", ("snap", "supplemental nutrition", "food stamp")),
+    ("wic", ("wic", "women, infants", "women infants")),
+    ("chip", ("chip", "children's health", "childrens health")),
+    ("nj_familycare", ("familycare", "family care", "medicaid")),
+    ("ccdf", ("child care", "childcare", "ccdf")),
+    ("preschool", ("preschool", "pre-k", "education aid")),
+    ("tanf", ("tanf", "workfirst", "work first", "temporary assistance")),
+    ("ga", ("general assistance",)),
+    ("liheap", ("liheap", "energy assistance", "utility", "heating")),
+    ("211nj", ("2-1-1", "211")),
+    ("ece_home_visit", ("home visit", "nurse-family", "nurse family", "home visiting")),
+    ("dv_services", ("domestic violence",)),
+]
+_KNOWN_KEYS = {k for k, _ in _RULE_KEYWORDS}
+
+
+def rule_key_for(prog: dict) -> str | None:
+    """Return a canonical rule key for a program, robust to source naming.
+
+    Order: explicit `rule_key` -> `id` (if already canonical) -> keyword match on
+    id/name/tags. UC rows may use different program_id values or omit tags/rule_key;
+    this normalizes them to the same keys the JSON fallback uses.
+    """
+    for candidate in (prog.get("rule_key"), prog.get("id")):
+        c = str(candidate).strip().lower() if candidate else ""
+        if c in _KNOWN_KEYS:
+            return c
+    # Match on id + name first (descriptive, unambiguous). Tags are only a last
+    # resort, because synthesized tags can include generic category words (e.g.
+    # "childcare") that would otherwise misroute a program (preschool -> ccdf).
+    primary = f"{prog.get('id') or ''} {prog.get('name') or ''}".lower()
+    for key, kws in _RULE_KEYWORDS:
+        if any(kw in primary for kw in kws):
+            return key
+    tag_text = " ".join(str(t).lower() for t in (prog.get("tags") or []))
+    for key, kws in _RULE_KEYWORDS:
+        if any(kw in tag_text for kw in kws):
+            return key
+    pid = str(prog.get("id")).strip().lower() if prog.get("id") else None
+    return pid or None
+
+
 def screen_programs(profile: dict, programs: list[dict]) -> list[dict]:
     """Return programs the family may qualify for, each with `match_reasons`.
 
-    Triggering is need/situation based (per program id, with tag fallback). Income
+    Triggering is need/situation based, keyed on a canonical rule key (see
+    `rule_key_for`) so JSON and Unity Catalog produce identical matches. Income
     is annotated, not used to silently exclude — we surface "worth confirming".
     """
     p = profile or {}
@@ -91,9 +139,15 @@ def screen_programs(profile: dict, programs: list[dict]) -> list[dict]:
     kids = _child_facts(p.get("children_ages"))
     pregnant = bool(p.get("pregnant"))
     work_or_school = bool(p.get("work_or_school"))
-    by_id = {prog.get("id"): prog for prog in programs}
+
+    by_key: dict[str, dict] = {}
+    for prog in programs:
+        key = rule_key_for(prog)
+        if key and key not in by_key:
+            by_key[key] = prog
 
     matched: list[dict] = []
+    used: set[str] = set()
 
     def add(prog: dict, reasons: list[str]):
         if prog is None:
@@ -108,9 +162,10 @@ def screen_programs(profile: dict, programs: list[dict]) -> list[dict]:
         item["match_reasons"] = full_reasons
         matched.append(item)
 
-    def trig(prog_id, condition, reason):
-        if condition and prog_id in by_id and prog_id not in {m.get("id") for m in matched}:
-            add(by_id[prog_id], [reason])
+    def trig(key, condition, reason):
+        if condition and key in by_key and key not in used:
+            used.add(key)
+            add(by_key[key], [reason])
 
     trig("snap", p.get("needs_food"), "You mentioned needing help with food.")
     trig("wic", pregnant or kids["under_5"],
